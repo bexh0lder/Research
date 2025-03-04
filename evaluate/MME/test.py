@@ -1,15 +1,35 @@
-from transformers import pipeline
+import requests
+from PIL import Image
 
-pipe = pipeline("image-text-to-text", model= "D:\Documents\Repo\LLM-Research\models\llava-hf\llava-1.5-7b-hf")
-messages = [
+import torch
+from transformers import AutoProcessor, LlavaForConditionalGeneration
+
+model_id = "/root/autodl-tmp/models/llava-hf/llava-1.5-7b-hf"
+model = LlavaForConditionalGeneration.from_pretrained(
+    model_id, 
+    torch_dtype=torch.float16, 
+    low_cpu_mem_usage=True, 
+).to(0)
+
+processor = AutoProcessor.from_pretrained(model_id)
+
+# Define a chat history and use `apply_chat_template` to get correctly formatted prompt
+# Each value in "content" has to be a list of dicts with types ("text", "image") 
+conversation = [
     {
+
       "role": "user",
       "content": [
-          {"type": "image", "url": "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/ai2d-demo.jpg"},
-          {"type": "text", "text": "What does the label 15 represent? (1) lava (2) core (3) tunnel (4) ash cloud"},
+          {"type": "text", "text": "What are these?"},
+          {"type": "image"},
         ],
     },
 ]
+prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
 
-out = pipe(text=messages, max_new_tokens=20)
-print(out)
+image_file = "http://images.cocodataset.org/val2017/000000039769.jpg"
+raw_image = Image.open(requests.get(image_file, stream=True).raw)
+inputs = processor(images=raw_image, text=prompt, return_tensors='pt').to(0, torch.float16)
+
+output = model.generate(**inputs, max_new_tokens=200, do_sample=False)
+print(processor.decode(output[0], skip_special_tokens=True))
